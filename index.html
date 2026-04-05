@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FX Premium</title>
+<title>FX Premium – Stable</title>
 
 <style>
 :root {
@@ -13,7 +13,6 @@
   --sub:#9ca3af;
   --accent:#22c55e;
 }
-
 body.light {
   --bg:#f4f6f8;
   --card:#ffffff;
@@ -21,28 +20,14 @@ body.light {
   --sub:#666;
   --accent:#16a34a;
 }
-
 body {
   margin:0;
   font-family:-apple-system,system-ui;
   background:var(--bg);
   color:var(--text);
-  transition:.3s;
 }
-
-.container {
-  max-width:420px;
-  margin:auto;
-  padding:20px;
-}
-
-.header {
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:20px;
-}
-
+.container { max-width:420px; margin:auto; padding:20px; }
+.header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
 .card {
   background:var(--card);
   border-radius:20px;
@@ -50,7 +35,6 @@ body {
   margin-bottom:15px;
   box-shadow:0 10px 30px rgba(0,0,0,0.2);
 }
-
 .amount {
   font-size:42px;
   border:none;
@@ -59,57 +43,18 @@ body {
   width:100%;
   outline:none;
 }
-
-.currency {
-  font-size:16px;
-  color:var(--sub);
-}
-
-.row {
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-
-button {
-  border:none;
-  border-radius:12px;
-  padding:12px;
-  cursor:pointer;
-}
-
-.primary {
-  background:var(--accent);
-  color:white;
-  width:100%;
-  font-size:18px;
-}
-
-.switch {
-  font-size:22px;
-  cursor:pointer;
-}
-
-.result {
-  font-size:32px;
-  text-align:center;
-  margin-top:10px;
-}
-
-.small {
-  text-align:center;
-  color:var(--sub);
-  font-size:12px;
-}
-
-canvas {
-  width:100%;
-}
-
-.toggle {
-  cursor:pointer;
-  font-size:18px;
-}
+.currency { font-size:16px; color:var(--sub); }
+.row { display:flex; justify-content:space-between; align-items:center; }
+button { border:none; border-radius:12px; padding:12px; cursor:pointer; }
+.primary { background:var(--accent); color:white; width:100%; font-size:18px; }
+.switch { font-size:22px; cursor:pointer; }
+.result { font-size:32px; text-align:center; margin-top:10px; }
+.small { text-align:center; color:var(--sub); font-size:12px; }
+canvas { width:100%; }
+.toggle { cursor:pointer; font-size:18px; }
+.status-ok { color:#22c55e; }
+.status-warn { color:#f59e0b; }
+.status-err { color:#ef4444; }
 </style>
 </head>
 
@@ -118,49 +63,53 @@ canvas {
 <div class="container">
 
 <div class="header">
-<h2>💱 FX</h2>
-<div class="toggle" onclick="toggleTheme()">🌗</div>
+  <h2>💱 FX</h2>
+  <div class="toggle" onclick="toggleTheme()">🌗</div>
 </div>
 
 <div class="card">
-<div class="row">
-<input class="amount" id="amount" placeholder="0">
-<span class="currency" id="from">EGP</span>
-</div>
+  <div class="row">
+    <input class="amount" id="amount" placeholder="0">
+    <span class="currency" id="from">EGP</span>
+  </div>
 
-<div class="row">
-<span class="currency">→</span>
-<div class="switch" onclick="swap()">⇅</div>
-</div>
+  <div class="row">
+    <span class="currency">→</span>
+    <div class="switch" onclick="swap()">⇅</div>
+  </div>
 
-<div class="row">
-<div class="result" id="result">0</div>
-<span class="currency" id="to">EUR</span>
-</div>
+  <div class="row">
+    <div class="result" id="result">0</div>
+    <span class="currency" id="to">EUR</span>
+  </div>
 
-<button class="primary" onclick="convert()">Converti</button>
-
-<div class="small" id="rate">Caricamento...</div>
+  <button class="primary" onclick="convert()">Converti</button>
+  <div class="small" id="rate">Caricamento...</div>
 </div>
 
 <div class="card">
-<h3>Trend</h3>
-<canvas id="chart"></canvas>
+  <h3>Trend</h3>
+  <canvas id="chart"></canvas>
 </div>
 
 </div>
 
 <script>
+/* =========================
+   STATE & PERSISTENCE
+========================= */
 let rates = {};
 let from = "EGP";
 let to = "EUR";
 let history = JSON.parse(localStorage.getItem("history") || "[]");
+const CACHE_KEY = "fx_rates_cache_v1"; // { rates, ts }
 
-// Tema
+/* =========================
+   THEME
+========================= */
 if(localStorage.getItem("theme")==="light"){
   document.body.classList.add("light");
 }
-
 function toggleTheme(){
   document.body.classList.toggle("light");
   localStorage.setItem("theme",
@@ -168,7 +117,9 @@ function toggleTheme(){
   );
 }
 
-// Swap valuta
+/* =========================
+   UI ACTIONS
+========================= */
 function swap(){
   [from,to] = [to,from];
   document.getElementById("from").innerText = from;
@@ -176,81 +127,164 @@ function swap(){
   convert();
 }
 
-// Fetch cambio
-async function fetchRates(){
+function setStatus(text, cls){
+  const el = document.getElementById("rate");
+  el.className = "small " + (cls || "");
+  el.innerText = text;
+}
+
+/* =========================
+   FETCH (PRIMARY + FALLBACK)
+========================= */
+async function fetchPrimary(){
+  // API 1 (affidabile, no key)
+  const res = await fetch("https://open.er-api.com/v6/latest/EGP", {cache:"no-store"});
+  const data = await res.json();
+  if(!data || data.result !== "success" || !data.rates) {
+    throw new Error("Primary failed");
+  }
+  return data.rates;
+}
+
+async function fetchFallback(){
+  // API 2 (fallback)
+  const res = await fetch("https://api.exchangerate-api.com/v4/latest/EGP", {cache:"no-store"});
+  const data = await res.json();
+  if(!data || !data.rates){
+    throw new Error("Fallback failed");
+  }
+  return data.rates;
+}
+
+/* =========================
+   CACHE
+========================= */
+function loadCache(){
   try{
-    let res = await fetch("https://api.exchangerate.host/latest?base=EGP");
-    let data = await res.json();
-    rates = data.rates;
+    const raw = localStorage.getItem(CACHE_KEY);
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj.rates || !obj.ts) return null;
+    return obj;
+  }catch{ return null; }
+}
 
-    saveHistory(rates.EUR);
+function saveCache(r){
+  localStorage.setItem(CACHE_KEY, JSON.stringify({
+    rates: r,
+    ts: Date.now()
+  }));
+}
 
-    document.getElementById("rate").innerText =
-      "1 EGP = " + rates.EUR.toFixed(4) + " EUR";
-  }catch{
-    document.getElementById("rate").innerText = "Offline";
+/* =========================
+   BOOTSTRAP RATES (ROBUSTO)
+========================= */
+async function initRates(){
+  // 1) prova cache (subito disponibile)
+  const cached = loadCache();
+  if(cached && cached.rates){
+    rates = cached.rates;
+    setStatus(`Usando cache • 1 EGP = ${rates.EUR?.toFixed(4) || "—"} EUR`, "status-warn");
+    convert();
+  }
+
+  // 2) prova primary
+  try{
+    const r = await fetchPrimary();
+    rates = r;
+    saveCache(r);
+    setStatus(`Live • 1 EGP = ${rates.EUR.toFixed(4)} EUR`, "status-ok");
+    onNewRate(rates.EUR);
+    convert();
+    return;
+  }catch(e1){
+    // 3) fallback
+    try{
+      const r = await fetchFallback();
+      rates = r;
+      saveCache(r);
+      setStatus(`Fallback • 1 EGP = ${rates.EUR.toFixed(4)} EUR`, "status-warn");
+      onNewRate(rates.EUR);
+      convert();
+      return;
+    }catch(e2){
+      // 4) totale offline → resta cache
+      if(cached && cached.rates){
+        setStatus("Offline • uso ultimo cambio salvato", "status-warn");
+        convert();
+      } else {
+        setStatus("Errore: nessun dato disponibile", "status-err");
+      }
+    }
   }
 }
 
-// Converti
+/* =========================
+   CONVERSION
+========================= */
 function convert(){
-  let val = parseFloat(document.getElementById("amount").value);
-
-  if(!val) return;
+  const val = parseFloat(document.getElementById("amount").value);
+  if(!val) {
+    document.getElementById("result").innerText = "0";
+    return;
+  }
+  if(!rates[to] || !rates[from]){
+    document.getElementById("result").innerText = "—";
+    return;
+  }
 
   let result;
-
-  if(from==="EGP"){
+  if(from === "EGP"){
     result = val * rates[to];
   } else {
     result = val / rates[from];
   }
-
-  document.getElementById("result").innerText =
-    result.toFixed(2);
+  document.getElementById("result").innerText = result.toFixed(2);
 }
 
-// Storico
-function saveHistory(v){
+/* =========================
+   HISTORY + CHART
+========================= */
+function onNewRate(v){
+  if(!v) return;
   history.push(v);
-  if(history.length>20) history.shift();
-  localStorage.setItem("history",JSON.stringify(history));
+  if(history.length > 30) history.shift();
+  localStorage.setItem("history", JSON.stringify(history));
   drawChart();
 }
 
-// Grafico minimal premium
 function drawChart(){
   const c = document.getElementById("chart");
   const ctx = c.getContext("2d");
-
-  c.width = 320;
-  c.height = 140;
+  c.width = 320; c.height = 140;
 
   ctx.clearRect(0,0,c.width,c.height);
+  if(history.length < 2) return;
 
-  if(history.length<2) return;
-
-  let max = Math.max(...history);
-  let min = Math.min(...history);
-
+  const max = Math.max(...history);
+  const min = Math.min(...history);
   ctx.beginPath();
 
   history.forEach((v,i)=>{
-    let x = i*(c.width/(history.length-1));
-    let y = c.height - ((v-min)/(max-min))*120;
+    const x = i*(c.width/(history.length-1));
+    const y = c.height - ((v-min)/(max-min || 1))*120;
 
     if(i===0) ctx.moveTo(x,y);
     else ctx.lineTo(x,y);
   });
-
   ctx.stroke();
 }
 
-// Auto convert mentre scrivi
-document.getElementById("amount").addEventListener("input",convert);
+/* =========================
+   UX
+========================= */
+document.getElementById("amount").addEventListener("input", convert);
 
-fetchRates();
+/* =========================
+   START
+========================= */
 drawChart();
+initRates();
 </script>
 
 </body>
