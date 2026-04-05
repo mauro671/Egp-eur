@@ -234,6 +234,7 @@
         }
 
         convertBtn.addEventListener('click', performConversion);
+        amountInput.addEventListener('input', performConversion);
         amountInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') performConversion();
         });
